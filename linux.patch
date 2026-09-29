@@ -1112,18 +1112,17 @@ diff --git a/drivers/bluetooth/btusb.c b/drivers/bluetooth/btusb.c
 index 184e95c1625e..dd162664d8b8 100644
 --- a/drivers/bluetooth/btusb.c
 +++ b/drivers/bluetooth/btusb.c
-@@ -67,6 +67,10 @@ static struct usb_driver btusb_driver;
- #define BTUSB_INTEL_NO_WBS_SUPPORT	BIT(26)
+@@ -68,6 +68,9 @@ static struct usb_driver btusb_driver;
  #define BTUSB_ACTIONS_SEMI		BIT(27)
  #define BTUSB_BARROT			BIT(28)
-+#define BTUSB_IFNUM_0                  BIT(29)
+ #define BTUSB_BROKEN_EXT_SCAN		BIT(29)
 +#define BTUSB_BROKEN_LE_DEFAULT_PHY    BIT(30)
-+#define BTUSB_BROKEN_READ_LOCAL_NAME   BIT(31)
-+#define BTUSB_NO_AUTOSUSPEND   		BIT(32)
++#define BTUSB_NO_AUTOSUSPEND          BIT(31)
++#define BTUSB_IFNUM_0   		BIT(32)
  
  static const struct usb_device_id btusb_table[] = {
  	/* Generic Bluetooth USB device */
-@@ -172,6 +176,14 @@ static const struct usb_device_id btusb_table[] = {
+@@ -172,6 +176,13 @@ static const struct usb_device_id btusb_table[] = {
  	{ USB_DEVICE(0x8087, 0x0a5a),
  	  .driver_info = BTUSB_INTEL_BOOT | BTUSB_BROKEN_ISOC },
  
@@ -1132,49 +1131,49 @@ index 184e95c1625e..dd162664d8b8 100644
 +	  .driver_info = BTUSB_MARVELL |
 +			 BTUSB_IFNUM_0 |
 +			 BTUSB_BROKEN_LE_DEFAULT_PHY |
-+			 BTUSB_BROKEN_READ_LOCAL_NAME |
 +			 BTUSB_NO_AUTOSUSPEND },
 +
  	{ }	/* Terminating entry */
  };
  
-@@ -472,6 +484,11 @@ static const struct usb_device_id quirks_table[] = {
+@@ -472,6 +483,10 @@ static const struct usb_device_id quirks_table[] = {
  	{ USB_DEVICE(0x1286, 0x2044), .driver_info = BTUSB_MARVELL },
  	{ USB_DEVICE(0x1286, 0x2046), .driver_info = BTUSB_MARVELL },
  	{ USB_DEVICE(0x1286, 0x204e), .driver_info = BTUSB_MARVELL },
 +	{ USB_DEVICE(0x1286, 0x2059), .driver_info = BTUSB_MARVELL |
 +						     BTUSB_IFNUM_0 |
 +						     BTUSB_BROKEN_LE_DEFAULT_PHY |
-+						     BTUSB_BROKEN_READ_LOCAL_NAME |
 +						     BTUSB_NO_AUTOSUSPEND },
  
  	/* Intel Bluetooth devices */
  	{ USB_DEVICE(0x8087, 0x0025), .driver_info = BTUSB_INTEL_COMBINED },
-@@ -4079,6 +4096,10 @@ static int btusb_probe(struct usb_interface *intf,
- 	    (intf->cur_altsetting->desc.bInterfaceNumber != 2))
- 		return -ENODEV;
- 
-+	if ((id->driver_info & BTUSB_IFNUM_0) &&
-+		intf->cur_altsetting->desc.bInterfaceNumber != 0)
+@@ -4320,6 +4113,15 @@ static int btusb_probe(struct usb_interface *intf,
+ 		if (match)
+ 			id = match;
+ 	}
++
++	if ((id->driver_info & BTUSB_IFNUM_2) &&
++	    (intf->cur_altsetting->desc.bInterfaceNumber != 0) &&
++	    (intf->cur_altsetting->desc.bInterfaceNumber != 2))
 +		return -ENODEV;
 +
- 	ifnum_base = intf->cur_altsetting->desc.bInterfaceNumber;
++	if ((id->driver_info & BTUSB_IFNUM_0) &&
++	    intf->cur_altsetting->desc.bInterfaceNumber != 0)
++		return -ENODEV;
  
- 	if (!id->driver_info) {
-@@ -4366,6 +4387,12 @@ static int btusb_probe(struct usb_interface *intf,
+ 	if (id->driver_info == BTUSB_IGNORE)
+ 		return -ENODEV;
+@@ -4610,6 +4400,9 @@ static int btusb_probe(struct usb_interface *intf,
  	if (id->driver_info & BTUSB_INVALID_LE_STATES)
  		hci_set_quirk(hdev, HCI_QUIRK_BROKEN_LE_STATES);
  
 +	if (id->driver_info & BTUSB_BROKEN_LE_DEFAULT_PHY)
 +		hci_set_quirk(hdev, HCI_QUIRK_BROKEN_SET_DEFAULT_PHY);
 +
-+	if (id->driver_info & BTUSB_BROKEN_READ_LOCAL_NAME)
-+		hci_set_quirk(hdev, HCI_QUIRK_BROKEN_READ_LOCAL_NAME);
-+
- 	if (id->driver_info & BTUSB_DIGIANSWER) {
- 		data->cmdreq_type = USB_TYPE_VENDOR;
- 		hci_set_quirk(hdev, HCI_QUIRK_RESET_ON_CLOSE);
-@@ -4422,7 +4449,7 @@ static int btusb_probe(struct usb_interface *intf,
+ 	if (id->driver_info & BTUSB_BROKEN_EXT_SCAN)
+ 		hci_set_quirk(hdev, HCI_QUIRK_BROKEN_EXT_SCAN);
+ 
+@@ -4422,7 +4462,7 @@ static int btusb_probe(struct usb_interface *intf,
  			data->diag = NULL;
  	}
  
@@ -10785,25 +10784,17 @@ diff --git a/include/net/bluetooth/hci.h b/include/net/bluetooth/hci.h
 index 50f0eef71fb1..30850c3ccd7b 100644
 --- a/include/net/bluetooth/hci.h
 +++ b/include/net/bluetooth/hci.h
-@@ -306,6 +306,22 @@ enum {
+@@ -309,6 +309,14 @@ enum {
  	 */
  	HCI_QUIRK_BROKEN_SET_RPA_TIMEOUT,
  
 +	/* When this quirk is set, the HCI_OP_LE_SET_DEFAULT_PHY command is
-+	* skipped during initialization. This is required for controllers
-+	* which advertise the command but reject the default 1M PHY request.
-+	*
-+	* This quirk can be set before hci_register_dev is called.
-+	*/
++	 * skipped during initialization. This is required for controllers
++	 * which advertise the command but reject the default 1M PHY request.
++	 *
++	 * This quirk can be set before hci_register_dev is called.
++	 */
 +	HCI_QUIRK_BROKEN_SET_DEFAULT_PHY,
-+
-+	/* When this quirk is set, the HCI_OP_READ_LOCAL_NAME command is
-+	* skipped during initialization. This is required for controllers
-+	* which become unstable when queried for the local name.
-+	*
-+	* This quirk can be set before hci_register_dev is called.
-+	*/
-+	HCI_QUIRK_BROKEN_READ_LOCAL_NAME,
 +
  	/*
  	 * When this quirk is set, the HCI_OP_LE_EXT_CREATE_CONN command is
@@ -10812,16 +10803,6 @@ diff --git a/net/bluetooth/hci_sync.c b/net/bluetooth/hci_sync.c
 index 8ccc3b22ef5b..65332809d3b6 100644
 --- a/net/bluetooth/hci_sync.c
 +++ b/net/bluetooth/hci_sync.c
-@@ -3895,6 +3895,9 @@ static int hci_read_dev_class_sync(struct hci_dev *hdev)
- /* Read Local Name */
- static int hci_read_local_name_sync(struct hci_dev *hdev)
- {
-+	if (hci_test_quirk(hdev, HCI_QUIRK_BROKEN_READ_LOCAL_NAME))
-+		return 0;
-+
- 	return __hci_cmd_sync_status(hdev, HCI_OP_READ_LOCAL_NAME,
- 				     0, NULL, HCI_CMD_TIMEOUT);
- }
 @@ -5004,6 +5007,12 @@ static int hci_le_set_default_phy_sync(struct hci_dev *hdev)
  {
  	struct hci_cp_le_set_default_phy cp;
